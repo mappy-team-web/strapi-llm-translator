@@ -22,6 +22,7 @@ import {
   balanceJSONBraces,
   cleanJSONString,
   extractJSONObject,
+  generateJsonSchema,
   safeJSONParse,
 } from '../utils/json-utils';
 
@@ -285,7 +286,8 @@ const llmService = ({ strapi }: { strapi: Core.Strapi }): LLMServiceType => ({
         batches.map(async (batch) => {
           const translationPayload = prepareTranslationPayload(batch);
           const prompt = buildPrompt(translationPayload, config.targetLanguage);
-          const response = await callLLMProvider(prompt, systemPrompt, userConfig);
+          const schema = generateJsonSchema(translationPayload);
+          const response = await callLLMProvider(prompt, systemPrompt, userConfig, schema);
           return await parseLLMResponse(response);
         })
       );
@@ -370,34 +372,56 @@ const buildSystemPrompt = async (userConfig: PluginUserConfig): Promise<string> 
 
 const createLLMRequest = (
   messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
-  temperature = 0.1
+  temperature = 0.1,
+  schema?: Record<string, any>
 ) => {
+  const responseFormat = schema
+    ? {
+        type: 'json_schema' as const,
+        json_schema: {
+          name: 'translation_response',
+          strict: true,
+          schema,
+        },
+      }
+    : { type: 'json_object' as const };
+
   return llmClient.chat.completions.create({
     model: LLM_MODEL,
     messages,
     temperature,
-    response_format: { type: 'json_object' },
+    response_format: responseFormat,
   });
 };
 
 const callLLMProvider = async (
   prompt: string,
   systemPrompt: string,
-  userConfig: PluginUserConfig
+  userConfig: PluginUserConfig,
+  schema?: Record<string, any>
 ): Promise<any> => {
-  return createLLMRequest(
-    [
-      {
-        role: 'system',
-        content: systemPrompt,
-      },
-      {
-        role: 'user',
-        content: prompt,
-      },
-    ],
-    userConfig?.temperature ?? DEFAULT_LLM_TEMPERATURE
-  );
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    {
+      role: 'system',
+      content: systemPrompt,
+    },
+    {
+      role: 'user',
+      content: prompt,
+    },
+  ];
+  const temperature = userConfig?.temperature ?? DEFAULT_LLM_TEMPERATURE;
+
+  if (schema) {
+    try {
+      return await createLLMRequest(messages, temperature, schema);
+    } catch (error) {
+      // Fallback to json_object if model or provider does not support json_schema
+      return await createLLMRequest(messages, temperature);
+    }
+  }
+
+  return createLLMRequest(messages, temperature);
 };
 
 const requestJSONCorrection = async (invalidJson: string): Promise<Record<string, any>> => {

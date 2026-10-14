@@ -341,10 +341,11 @@ IMPORTANT RULES:
 3. Maintain any markdown formatting within the text
 4. Keep HTML tags intact if present
 5. Preserve any special characters or placeholders
-6. Return ONLY the translated JSON object
+6. Return ONLY the translated JSON object matching the exact structure
 7. Ensure the JSON is valid and well-formed. Keep arrays and nested objects intact
-8. Do not add any explanations or comments
-9. Ensure professional and culturally appropriate translations
+8. All double quotes inside translated text must be escaped as \\" or written as typographical quotation marks appropriate for ${targetLanguage} (e.g. «...» or „...“). Never output raw unescaped ASCII double quotes inside JSON string values.
+9. Do not add any explanations or comments
+10. Ensure professional and culturally appropriate translations
 
 SOURCE JSON:
 ${JSON.stringify(fields, null, 2)}`;
